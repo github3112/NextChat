@@ -9,6 +9,12 @@ describe("getBearerToken", () => {
     expect(getBearerToken("abc", true)).toBe("abc");
   });
 
+  test("preserves a Basic authorization scheme", () => {
+    expect(getBearerToken("Basic dXNlcjpwYXNz")).toBe(
+      "Basic dXNlcjpwYXNz",
+    );
+  });
+
   test("trims surrounding whitespace from the key", () => {
     expect(getBearerToken("  abc  ")).toBe("Bearer abc");
   });

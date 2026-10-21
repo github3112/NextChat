@@ -3,7 +3,6 @@ import { DalleQuality, DalleStyle, ModelSize } from "../typing";
 import { getClientConfig } from "../config/client";
 import {
   DEFAULT_INPUT_TEMPLATE,
-  DEFAULT_MODELS,
   DEFAULT_SIDEBAR_WIDTH,
   DEFAULT_TTS_ENGINE,
   DEFAULT_TTS_ENGINES,
@@ -17,7 +16,7 @@ import {
 import { createPersistStore } from "../utils/store";
 import type { Voice } from "rt-client";
 
-export type ModelType = (typeof DEFAULT_MODELS)[number]["name"];
+export type ModelType = string;
 export type TTSModelType = (typeof DEFAULT_TTS_MODELS)[number];
 export type TTSVoiceType = (typeof DEFAULT_TTS_VOICES)[number];
 export type TTSEngineType = (typeof DEFAULT_TTS_ENGINES)[number];
@@ -61,14 +60,15 @@ export const DEFAULT_CONFIG = {
   hideBuiltinMasks: false, // dont add builtin masks
 
   customModels: "",
-  models: DEFAULT_MODELS as any as LLMModel[],
+  models: [] as LLMModel[],
 
   modelConfig: {
-    model: "gpt-4o-mini" as ModelType,
+    model: "",
     providerName: "OpenAI" as ServiceProvider,
     temperature: 0.5,
     top_p: 1,
     max_tokens: 4000,
+    contextWindow: 0,
     presence_penalty: 0,
     frequency_penalty: 0,
     sendMemory: true,
@@ -147,6 +147,9 @@ export const ModalConfigValidator = {
   max_tokens(x: number) {
     return limitNumber(x, 0, 512000, 1024);
   },
+  contextWindow(x: number) {
+    return limitNumber(x, 0, 1000000, 0);
+  },
   presence_penalty(x: number) {
     return limitNumber(x, -2, 2, 0);
   },
@@ -169,26 +172,7 @@ export const useAppConfig = createPersistStore(
     },
 
     mergeModels(newModels: LLMModel[]) {
-      if (!newModels || newModels.length === 0) {
-        return;
-      }
-
-      const oldModels = get().models;
-      const modelMap: Record<string, LLMModel> = {};
-
-      for (const model of oldModels) {
-        model.available = false;
-        modelMap[`${model.name}@${model?.provider?.id}`] = model;
-      }
-
-      for (const model of newModels) {
-        model.available = true;
-        modelMap[`${model.name}@${model?.provider?.id}`] = model;
-      }
-
-      set(() => ({
-        models: Object.values(modelMap),
-      }));
+      set(() => ({ models: [...newModels] }));
     },
 
     allModels() {},
@@ -200,15 +184,7 @@ export const useAppConfig = createPersistStore(
     merge(persistedState, currentState) {
       const state = persistedState as ChatConfig | undefined;
       if (!state) return { ...currentState };
-      const models = currentState.models.slice();
-      state.models.forEach((pModel) => {
-        const idx = models.findIndex(
-          (v) => v.name === pModel.name && v.provider === pModel.provider,
-        );
-        if (idx !== -1) models[idx] = pModel;
-        else models.push(pModel);
-      });
-      return { ...currentState, ...state, models: models };
+      return { ...currentState, ...state, models: currentState.models };
     },
 
     migrate(persistedState, version) {

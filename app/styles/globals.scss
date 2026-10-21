@@ -5,12 +5,14 @@
   --theme: light;
 
   /* color */
-  --white: white;
-  --black: rgb(48, 48, 48);
-  --gray: rgb(250, 250, 250);
-  --primary: rgb(29, 147, 171);
-  --second: rgb(231, 248, 255);
-  --hover-color: #f3f3f3;
+  --white: #ffffff;
+  --black: #161b1d;
+  --gray: #f7f9f9;
+  --primary: #76a5ad;
+  --primary-text: #38636b;
+  --primary-foreground: #161b1d;
+  --second: #eff5f5;
+  --hover-color: #e3e7e8;
   --bar-color: rgba(0, 0, 0, 0.1);
   --theme-color: var(--gray);
 
@@ -19,23 +21,25 @@
   --card-shadow: 0px 2px 4px 0px rgb(0, 0, 0, 0.05);
 
   /* stroke */
-  --border-in-light: 1px solid rgb(222, 222, 222);
+  --border-in-light: 1px solid #dce3e5;
 }
 
 @mixin dark {
   --theme: dark;
 
   /* color */
-  --white: rgb(30, 30, 30);
-  --black: rgb(187, 187, 187);
-  --gray: rgb(21, 21, 21);
-  --primary: rgb(29, 147, 171);
-  --second: rgb(27 38 42);
-  --hover-color: #323232;
+  --white: #293538;
+  --black: #dce6e7;
+  --gray: #273033;
+  --primary: #76a5ad;
+  --primary-text: #a9d6dc;
+  --primary-foreground: #161b1d;
+  --second: #414e52;
+  --hover-color: #344145;
 
   --bar-color: rgba(255, 255, 255, 0.1);
 
-  --border-in-light: 1px solid rgba(255, 255, 255, 0.192);
+  --border-in-light: 1px solid rgba(220, 230, 231, 0.15);
 
   --theme-color: var(--gray);
 
@@ -262,7 +266,7 @@ div.math {
 
 .link {
   font-size: 12px;
-  color: var(--primary);
+  color: var(--primary-text);
   text-decoration: none;
 
   &:hover {

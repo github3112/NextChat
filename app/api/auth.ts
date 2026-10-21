@@ -101,6 +101,9 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
       case ModelProvider.ChatGLM:
         systemApiKey = serverConfig.chatglmApiKey;
         break;
+      case ModelProvider.Cloudflare:
+        systemApiKey = serverConfig.cloudflareApiToken;
+        break;
       case ModelProvider.SiliconFlow:
         systemApiKey = serverConfig.siliconFlowApiKey;
         break;
@@ -115,7 +118,10 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
 
     if (systemApiKey) {
       console.log("[Auth] use system api key");
-      req.headers.set("Authorization", `Bearer ${systemApiKey}`);
+      const authorization = /^Basic\s/i.test(systemApiKey)
+        ? systemApiKey
+        : `Bearer ${systemApiKey}`;
+      req.headers.set("Authorization", authorization);
     } else {
       console.log("[Auth] admin did not provide an api key");
     }

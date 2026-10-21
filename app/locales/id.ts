@@ -27,7 +27,7 @@ const id: PartialLocaleType = {
     Return: "Kembali",
     SaasTips: "Konfigurasi terlalu rumit, saya ingin menggunakannya segera",
     TopTips:
-      "🥳 Penawaran Peluncuran NextChat AI, buka model besar terbaru sekarang",
+      "🥳 Penawaran Peluncuran Pyjri AI, buka model besar terbaru sekarang",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} percakapan`,
@@ -296,10 +296,10 @@ const id: PartialLocaleType = {
 
     Access: {
       SaasStart: {
-        Title: "Gunakan NextChat AI",
+        Title: "Gunakan Pyjri AI",
         Label: "(Solusi paling hemat biaya)",
         SubTitle:
-          "Dikelola secara resmi oleh NextChat, siap digunakan tanpa konfigurasi, mendukung model besar terbaru",
+          "Dikelola secara resmi oleh Pyjri, siap digunakan tanpa konfigurasi, mendukung model besar terbaru",
         ChatNow: "Chat Sekarang",
       },
 

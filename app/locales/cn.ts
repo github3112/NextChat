@@ -26,13 +26,18 @@ const cn = {
     Confirm: "确认",
     Later: "稍后再说",
     SaasTips: "配置太麻烦，想要立即使用",
-    TopTips: "🥳 NextChat AI 首发优惠，立刻解锁最新大模型",
+    TopTips: "🥳 Pyjri AI 首发优惠，立刻解锁最新大模型",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} 条对话`,
   },
   Chat: {
     SubTitle: (count: number) => `共 ${count} 条对话`,
+    ContextUsageTitle: "Token 使用量估算；实际用量因模型和系统提示词而异。",
+    ContextUsage: (used: number, limit?: number) =>
+      limit
+        ? `上下文约 ${used.toLocaleString()} / ${limit.toLocaleString()} tokens`
+        : `上下文约 ${used.toLocaleString()} tokens · 模型限制未知`,
     EditMessage: {
       Title: "编辑消息记录",
       Topic: {
@@ -55,6 +60,14 @@ const cn = {
       FullScreen: "全屏",
       RefreshTitle: "刷新标题",
       RefreshToast: "已发送刷新标题请求",
+      CompactContext: "压缩上下文",
+      CompactingContext: "正在压缩…",
+      WaitForResponseToFinish: "请等待当前回复完成。",
+      EnableMemoryBeforeCompacting: "请先在模型设置中启用记忆。",
+      NoOlderHistoryToCompact: "没有可压缩的较早历史记录。",
+      ContextCompacted: "较早的上下文已压缩，完整聊天记录仍会保留。",
+      ContextCompactionFailed:
+        "上下文压缩失败；现有记忆未更改。请检查摘要模型和上下文限制。",
       Speech: "朗读",
       StopSpeech: "停止",
     },
@@ -294,6 +307,11 @@ const cn = {
       Title: "附带历史消息数",
       SubTitle: "每次请求携带的历史消息数",
     },
+    ContextWindow: {
+      Title: "上下文窗口",
+      SubTitle:
+        "模型输入 Token 限制。输入 0 时使用接口提供的模型元数据（如有）。",
+    },
     CompressThreshold: {
       Title: "历史消息长度压缩阈值",
       SubTitle: "当未压缩的历史消息超过该值时，将进行压缩",
@@ -311,9 +329,9 @@ const cn = {
 
     Access: {
       SaasStart: {
-        Title: "使用 NextChat AI",
+        Title: "使用 Pyjri AI",
         Label: "（性价比最高的方案）",
-        SubTitle: "由 NextChat 官方维护, 零配置开箱即用，支持最新大模型",
+        SubTitle: "由 Pyjri 官方维护, 零配置开箱即用，支持最新大模型",
         ChatNow: "立刻对话",
       },
       AccessCode: {
@@ -686,7 +704,6 @@ const cn = {
       SubTitle: (count: number) => `${count} 个插件`,
       Search: "搜索插件",
       Create: "新建",
-      Find: "您可以在Github上找到优秀的插件：",
     },
     Item: {
       Info: (count: number) => `${count} 方法`,

@@ -27,7 +27,7 @@ const vi: PartialLocaleType = {
     Return: "Trở lại",
     SaasTips: "Cấu hình quá phức tạp, tôi muốn sử dụng ngay lập tức",
     TopTips:
-      "🥳 Ưu đãi ra mắt NextChat AI, mở khóa các mô hình lớn mới nhất ngay bây giờ",
+      "🥳 Ưu đãi ra mắt Pyjri AI, mở khóa các mô hình lớn mới nhất ngay bây giờ",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} cuộc trò chuyện`,
@@ -294,10 +294,10 @@ const vi: PartialLocaleType = {
 
     Access: {
       SaasStart: {
-        Title: "Sử dụng NextChat AI",
+        Title: "Sử dụng Pyjri AI",
         Label: "(Giải pháp tiết kiệm chi phí nhất)",
         SubTitle:
-          "Được NextChat chính thức duy trì, sẵn sàng sử dụng mà không cần cấu hình, hỗ trợ các mô hình lớn mới nhất",
+          "Được Pyjri chính thức duy trì, sẵn sàng sử dụng mà không cần cấu hình, hỗ trợ các mô hình lớn mới nhất",
         ChatNow: "Chat ngay",
       },
 

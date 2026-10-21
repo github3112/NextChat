@@ -3,7 +3,6 @@
 import {
   ApiPath,
   OPENAI_BASE_URL,
-  DEFAULT_MODELS,
   OpenaiPath,
   Azure,
   REQUEST_TIMEOUT_MS,
@@ -51,7 +50,49 @@ export interface OpenAIListModelResponse {
     id: string;
     object: string;
     root: string;
+    capabilities?: string[];
+    context_window?: number;
   }>;
+}
+
+const CHAT_CAPABILITIES = new Set([
+  "chat",
+  "chat.completions",
+  "text-generation",
+]);
+const NON_CHAT_MODEL_ID =
+  /(^|[\/_-])(embedding|embeddings|rerank|whisper|tts|transcription|transcribe|text-to-speech|dall-e|stable-diffusion)(?=$|[\/_-])/i;
+
+export function mapOpenAIModels(
+  endpointModels: OpenAIListModelResponse["data"],
+  providerName: ServiceProvider = ServiceProvider.OpenAI,
+): LLMModel[] {
+  return endpointModels
+    .filter((model) => {
+      if (model.capabilities?.length) {
+        return model.capabilities.some((capability) =>
+          CHAT_CAPABILITIES.has(capability.toLowerCase()),
+        );
+      }
+      return !NON_CHAT_MODEL_ID.test(model.id);
+    })
+    .map((model, index) => ({
+      name: model.id,
+      available: true,
+      contextWindow:
+        typeof model.context_window === "number" &&
+        Number.isSafeInteger(model.context_window) &&
+        model.context_window > 0
+          ? model.context_window
+          : undefined,
+      sorted: 1000 + index,
+      provider: {
+        id: providerName.toLowerCase(),
+        providerName,
+        providerType: "openai",
+        sorted: 1,
+      },
+    }));
 }
 
 export interface RequestPayload {
@@ -80,8 +121,6 @@ export interface DalleRequestPayload {
 }
 
 export class ChatGPTApi implements LLMApi {
-  private disableListModels = true;
-
   path(path: string): string {
     const accessStore = useAccessStore.getState();
 
@@ -192,6 +231,10 @@ export class ChatGPTApi implements LLMApi {
         providerName: options.config.providerName,
       },
     };
+    const requestHeaders =
+      modelConfig.providerName === ServiceProvider.Cloudflare
+        ? getHeaders(false, ServiceProvider.Cloudflare)
+        : getHeaders();
 
     let requestPayload: RequestPayload | DalleRequestPayload;
 
@@ -200,7 +243,7 @@ export class ChatGPTApi implements LLMApi {
       options.config.model.startsWith("o1") ||
       options.config.model.startsWith("o3") ||
       options.config.model.startsWith("o4-mini");
-    const isGpt5 =  options.config.model.startsWith("gpt-5");
+    const isGpt5 = options.config.model.startsWith("gpt-5");
     if (isDalle3) {
       const prompt = getMessageTextContent(
         options.messages.slice(-1)?.pop() as any,
@@ -231,7 +274,7 @@ export class ChatGPTApi implements LLMApi {
         messages,
         stream: options.config.stream,
         model: modelConfig.model,
-        temperature: (!isO1OrO3 && !isGpt5) ? modelConfig.temperature : 1,
+        temperature: !isO1OrO3 && !isGpt5 ? modelConfig.temperature : 1,
         presence_penalty: !isO1OrO3 ? modelConfig.presence_penalty : 0,
         frequency_penalty: !isO1OrO3 ? modelConfig.frequency_penalty : 0,
         top_p: !isO1OrO3 ? modelConfig.top_p : 1,
@@ -240,11 +283,10 @@ export class ChatGPTApi implements LLMApi {
       };
 
       if (isGpt5) {
-  	// Remove max_tokens if present
-  	delete requestPayload.max_tokens;
-  	// Add max_completion_tokens (or max_completion_tokens if that's what you meant)
-  	requestPayload["max_completion_tokens"] = modelConfig.max_tokens;
-
+        // Remove max_tokens if present
+        delete requestPayload.max_tokens;
+        // Add max_completion_tokens (or max_completion_tokens if that's what you meant)
+        requestPayload["max_completion_tokens"] = modelConfig.max_tokens;
       } else if (isO1OrO3) {
         // by default the o1/o3 models will not attempt to produce output that includes markdown formatting
         // manually add "Formatting re-enabled" developer message to encourage markdown inclusion in model responses
@@ -258,9 +300,8 @@ export class ChatGPTApi implements LLMApi {
         requestPayload["max_completion_tokens"] = modelConfig.max_tokens;
       }
 
-
       // add max_tokens to vision model
-      if (visionModel && !isO1OrO3 && ! isGpt5) {
+      if (visionModel && !isO1OrO3 && !isGpt5) {
         requestPayload["max_tokens"] = Math.max(modelConfig.max_tokens, 4000);
       }
     }
@@ -314,7 +355,7 @@ export class ChatGPTApi implements LLMApi {
         streamWithThink(
           chatPath,
           requestPayload,
-          getHeaders(),
+          requestHeaders,
           tools as any,
           funcs,
           controller,
@@ -407,7 +448,7 @@ export class ChatGPTApi implements LLMApi {
           method: "POST",
           body: JSON.stringify(requestPayload),
           signal: controller.signal,
-          headers: getHeaders(),
+          headers: requestHeaders,
         };
 
         // make a fetch request
@@ -495,40 +536,62 @@ export class ChatGPTApi implements LLMApi {
   }
 
   async models(): Promise<LLMModel[]> {
-    if (this.disableListModels) {
-      return DEFAULT_MODELS.slice();
-    }
-
     const res = await fetch(this.path(OpenaiPath.ListModelPath), {
       method: "GET",
       headers: {
-        ...getHeaders(),
+        ...getHeaders(false, ServiceProvider.OpenAI),
       },
     });
 
-    const resJson = (await res.json()) as OpenAIListModelResponse;
-    const chatModels = resJson.data?.filter(
-      (m) => m.id.startsWith("gpt-") || m.id.startsWith("chatgpt-"),
-    );
-    console.log("[Models]", chatModels);
-
-    if (!chatModels) {
-      return [];
+    if (!res.ok) {
+      throw new Error(
+        `Failed to load models from the configured OpenAI-compatible endpoint (HTTP ${res.status})`,
+      );
     }
 
-    //由于目前 OpenAI 的 disableListModels 默认为 true，所以当前实际不会运行到这场
-    let seq = 1000; //同 Constant.ts 中的排序保持一致
-    return chatModels.map((m) => ({
-      name: m.id,
-      available: true,
-      sorted: seq++,
-      provider: {
-        id: "openai",
-        providerName: "OpenAI",
-        providerType: "openai",
-        sorted: 1,
-      },
-    }));
+    const resJson = (await res.json()) as OpenAIListModelResponse;
+    if (!Array.isArray(resJson.data)) {
+      throw new Error(
+        "The configured OpenAI-compatible endpoint returned an invalid model list",
+      );
+    }
+
+    const endpointModels = resJson.data.filter(
+      (model) => typeof model.id === "string" && model.id.length > 0,
+    );
+    const chatModels = mapOpenAIModels(endpointModels);
+    console.log(
+      "[Models]",
+      chatModels.map((model) => model.name),
+    );
+
+    return chatModels;
+  }
+}
+
+export class CloudflareApi extends ChatGPTApi {
+  path(path: string): string {
+    return `${ApiPath.Cloudflare}/${path.replace(/^\/+/, "")}`;
+  }
+
+  async models(): Promise<LLMModel[]> {
+    const res = await fetch(this.path(OpenaiPath.ListModelPath), {
+      method: "GET",
+      headers: getHeaders(false, ServiceProvider.Cloudflare),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Failed to load Cloudflare Workers AI models (HTTP ${res.status})`,
+      );
+    }
+
+    const resJson = (await res.json()) as OpenAIListModelResponse;
+    if (!Array.isArray(resJson.data)) {
+      throw new Error("Cloudflare Workers AI returned an invalid model list.");
+    }
+
+    return mapOpenAIModels(resJson.data, ServiceProvider.Cloudflare);
   }
 }
 export { OpenaiPath };

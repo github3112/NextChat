@@ -31,7 +31,11 @@ import {
 import Locale, { getLang } from "../locales";
 import { prettyObject } from "../utils/format";
 import { createPersistStore } from "../utils/store";
-import { estimateTokenLength } from "../utils/token";
+import {
+  estimateMessageTokenLength,
+  resolveContextWindow,
+  truncateTextToTokenLimit,
+} from "../utils/token";
 import { ModelConfig, ModelType, useAppConfig } from "./config";
 import { useAccessStore } from "./access";
 import { collectModelsWithDefaultModel } from "../utils/model";
@@ -152,10 +156,22 @@ function getSummarizeModel(
 }
 
 function countMessages(msgs: ChatMessage[]) {
-  return msgs.reduce(
-    (pre, cur) => pre + estimateTokenLength(getMessageTextContent(cur)),
-    0,
-  );
+  return msgs.reduce((pre, cur) => pre + estimateMessageTokenLength(cur), 0);
+}
+
+function toCompactionMessage(message: ChatMessage): ChatMessage {
+  if (typeof message.content === "string") return message;
+  const imageCount = message.content.filter(
+    (part) => part.type === "image_url",
+  ).length;
+  const text = getMessageTextContent(message);
+
+  return {
+    ...message,
+    content: imageCount
+      ? `${text}\n[${imageCount} image attachment(s) omitted during compaction]`
+      : text,
+  };
 }
 
 function fillTemplateWith(input: string, modelConfig: ModelConfig) {
@@ -411,6 +427,19 @@ export const useChatStore = createPersistStore(
       ) {
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
+        const availableModels = useAppConfig.getState().models;
+        const isAvailableModel = availableModels.some(
+          (model) =>
+            model.name === modelConfig.model &&
+            model.provider?.providerName === modelConfig.providerName,
+        );
+
+        if (!isAvailableModel) {
+          showToast(
+            "No available model from the configured OpenAI-compatible endpoint.",
+          );
+          return;
+        }
 
         // MCP Response no need to fill template
         let mContent: string | MultimodalContent[] = isMcpResponse
@@ -440,7 +469,7 @@ export const useChatStore = createPersistStore(
         });
 
         // get recent messages
-        const recentMessages = await get().getMessagesWithMemory();
+        const recentMessages = await get().getMessagesWithMemory(userMessage);
         const sendMessages = recentMessages.concat(userMessage);
         const messageIndex = session.messages.length + 1;
 
@@ -539,7 +568,7 @@ export const useChatStore = createPersistStore(
         }
       },
 
-      async getMessagesWithMemory() {
+      async getMessagesWithMemory(additionalMessage?: ChatMessage) {
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
         const clearContextIndex = session.clearContextIndex ?? 0;
@@ -616,18 +645,39 @@ export const useChatStore = createPersistStore(
           : shortTermMemoryStartIndex;
         // and if user has cleared history messages, we should exclude the memory too.
         const contextStartIndex = Math.max(clearContextIndex, memoryStartIndex);
-        const maxTokenThreshold = modelConfig.max_tokens;
+        const selectedModel = useAppConfig
+          .getState()
+          .models.find(
+            (model) =>
+              model.name === modelConfig.model &&
+              model.provider?.providerName === modelConfig.providerName,
+          );
+        const contextWindow = resolveContextWindow(
+          modelConfig.contextWindow,
+          selectedModel?.contextWindow,
+        );
+        const maxTokenThreshold = contextWindow
+          ? Math.max(0, contextWindow - modelConfig.max_tokens)
+          : modelConfig.max_tokens;
 
         // get recent messages as much as possible
         const reversedRecentMessages = [];
         for (
-          let i = totalMessageCount - 1, tokenCount = 0;
-          i >= contextStartIndex && tokenCount < maxTokenThreshold;
+          let i = totalMessageCount - 1,
+            tokenCount = countMessages([
+              ...systemPrompts,
+              ...longTermMemoryPrompts,
+              ...contextPrompts,
+              ...(additionalMessage ? [additionalMessage] : []),
+            ]);
+          i >= contextStartIndex;
           i -= 1
         ) {
           const msg = messages[i];
           if (!msg || msg.isError) continue;
-          tokenCount += estimateTokenLength(getMessageTextContent(msg));
+          const messageTokenCount = estimateMessageTokenLength(msg);
+          if (tokenCount + messageTokenCount > maxTokenThreshold) break;
+          tokenCount += messageTokenCount;
           reversedRecentMessages.push(msg);
         }
         // concat all messages
@@ -663,12 +713,15 @@ export const useChatStore = createPersistStore(
       summarizeSession(
         refreshTitle: boolean = false,
         targetSession: ChatSession,
+        force: boolean = false,
+        onComplete?: (success: boolean) => void,
       ) {
         const config = useAppConfig.getState();
         const session = targetSession;
         const modelConfig = session.mask.modelConfig;
         // skip summarize when using dalle3?
         if (isDalle3(modelConfig.model)) {
+          onComplete?.(false);
           return;
         }
 
@@ -687,10 +740,11 @@ export const useChatStore = createPersistStore(
         // should summarize topic after chating more than 50 words
         const SUMMARIZE_MIN_LEN = 50;
         if (
-          (config.enableAutoGenerateTitle &&
+          !force &&
+          ((config.enableAutoGenerateTitle &&
             session.topic === DEFAULT_TOPIC &&
             countMessages(messages) >= SUMMARIZE_MIN_LEN) ||
-          refreshTitle
+            refreshTitle)
         ) {
           const startIndex = Math.max(
             0,
@@ -730,25 +784,111 @@ export const useChatStore = createPersistStore(
           session.lastSummarizeIndex,
           session.clearContextIndex ?? 0,
         );
-        let toBeSummarizedMsgs = messages
-          .filter((msg) => !msg.isError)
-          .slice(summarizeIndex);
+        let summarizeThroughIndex = messages.length;
+        let toBeSummarizedMsgs: ChatMessage[];
+        const memoryPrompt =
+          session.lastSummarizeIndex > (session.clearContextIndex ?? 0)
+            ? get().getMemoryPrompt()
+            : undefined;
+        let memoryForSummary = memoryPrompt;
+        if (force) {
+          const summarizeEndIndex = Math.max(
+            summarizeIndex,
+            messages.length - modelConfig.historyMessageCount,
+          );
+          const summaryModelInfo = config.models.find(
+            (item) =>
+              item.name === model &&
+              item.provider?.providerName === providerName,
+          );
+          const summaryModelIsSelected =
+            model === modelConfig.model &&
+            providerName === modelConfig.providerName;
+          const summaryContextWindow = summaryModelIsSelected
+            ? resolveContextWindow(
+                modelConfig.contextWindow,
+                summaryModelInfo?.contextWindow,
+              )
+            : summaryModelInfo?.contextWindow;
+          const summaryInputLimit = summaryContextWindow
+            ? Math.max(
+                1,
+                summaryContextWindow -
+                  Math.min(4608, Math.floor(summaryContextWindow / 2)),
+              )
+            : 3500;
+          const memoryTokenCount = memoryForSummary
+            ? estimateMessageTokenLength(memoryForSummary)
+            : 0;
+          if (memoryTokenCount > summaryInputLimit / 2) {
+            onComplete?.(false);
+            return;
+          }
+          let summaryTokenCount = memoryTokenCount;
+          summarizeThroughIndex = summarizeIndex;
+          toBeSummarizedMsgs = [];
+
+          for (
+            let index = summarizeIndex;
+            index < summarizeEndIndex;
+            index += 1
+          ) {
+            const message = messages[index];
+            summarizeThroughIndex = index + 1;
+            if (!message || message.isError) continue;
+            let compactMessage = toCompactionMessage(message);
+            let messageTokenCount = estimateMessageTokenLength(compactMessage);
+            if (summaryTokenCount + messageTokenCount > summaryInputLimit) {
+              if (toBeSummarizedMsgs.length > 0) {
+                summarizeThroughIndex = index;
+                break;
+              }
+              compactMessage = {
+                ...compactMessage,
+                content: truncateTextToTokenLimit(
+                  getMessageTextContent(compactMessage),
+                  summaryInputLimit - summaryTokenCount,
+                ),
+              };
+              messageTokenCount = estimateMessageTokenLength(compactMessage);
+              if (
+                !getMessageTextContent(compactMessage) ||
+                summaryTokenCount + messageTokenCount > summaryInputLimit
+              ) {
+                summarizeThroughIndex = index;
+                break;
+              }
+            }
+            summaryTokenCount += messageTokenCount;
+            toBeSummarizedMsgs.push(compactMessage);
+          }
+        } else {
+          toBeSummarizedMsgs = messages
+            .filter((msg) => !msg.isError)
+            .slice(summarizeIndex);
+        }
 
         const historyMsgLength = countMessages(toBeSummarizedMsgs);
 
-        if (historyMsgLength > (modelConfig?.max_tokens || 4000)) {
+        if (force && toBeSummarizedMsgs.length === 0) {
+          onComplete?.(false);
+          return;
+        }
+
+        if (!force && historyMsgLength > (modelConfig?.max_tokens || 4000)) {
           const n = toBeSummarizedMsgs.length;
           toBeSummarizedMsgs = toBeSummarizedMsgs.slice(
             Math.max(0, n - modelConfig.historyMessageCount),
           );
         }
-        const memoryPrompt = get().getMemoryPrompt();
-        if (memoryPrompt) {
+        if (memoryForSummary) {
           // add memory prompt
-          toBeSummarizedMsgs.unshift(memoryPrompt);
+          toBeSummarizedMsgs.unshift(memoryForSummary);
         }
 
-        const lastSummarizeIndex = session.messages.length;
+        const lastSummarizeIndex = force
+          ? summarizeThroughIndex
+          : session.messages.length;
 
         console.log(
           "[Chat History] ",
@@ -758,43 +898,64 @@ export const useChatStore = createPersistStore(
         );
 
         if (
-          historyMsgLength > modelConfig.compressMessageLengthThreshold &&
-          modelConfig.sendMemory
+          force ||
+          (historyMsgLength > modelConfig.compressMessageLengthThreshold &&
+            modelConfig.sendMemory)
         ) {
-          /** Destruct max_tokens while summarizing
-           * this param is just shit
-           **/
-          const { max_tokens, ...modelcfg } = modelConfig;
-          api.llm.chat({
-            messages: toBeSummarizedMsgs.concat(
-              createMessage({
-                role: "system",
-                content: Locale.Store.Prompt.Summarize,
-                date: "",
-              }),
-            ),
-            config: {
-              ...modelcfg,
-              stream: true,
-              model,
-              providerName,
-            },
-            onUpdate(message) {
-              session.memoryPrompt = message;
-            },
-            onFinish(message, responseRes) {
-              if (responseRes?.status === 200) {
-                console.log("[Memory] ", message);
-                get().updateTargetSession(session, (session) => {
-                  session.lastSummarizeIndex = lastSummarizeIndex;
-                  session.memoryPrompt = message; // Update the memory prompt for stored it in local storage
-                });
-              }
-            },
-            onError(err) {
-              console.error("[Summarize] ", err);
-            },
-          });
+          if (toBeSummarizedMsgs.length === 0) {
+            onComplete?.(false);
+            return;
+          }
+          const { max_tokens, contextWindow, ...modelcfg } = modelConfig;
+          let completionCalled = false;
+          const complete = (success: boolean) => {
+            if (completionCalled) return;
+            completionCalled = true;
+            onComplete?.(success);
+          };
+          try {
+            void api.llm
+              .chat({
+                messages: toBeSummarizedMsgs.concat(
+                  createMessage({
+                    role: "system",
+                    content: Locale.Store.Prompt.Summarize,
+                    date: "",
+                  }),
+                ),
+                config: {
+                  ...modelcfg,
+                  stream: true,
+                  model,
+                  providerName,
+                },
+                onFinish(message, responseRes) {
+                  if (responseRes?.status === 200 && message.trim()) {
+                    console.log("[Memory] ", message);
+                    get().updateTargetSession(session, (session) => {
+                      session.lastSummarizeIndex = lastSummarizeIndex;
+                      session.memoryPrompt = message;
+                    });
+                    complete(true);
+                  } else {
+                    complete(false);
+                  }
+                },
+                onError(err) {
+                  console.error("[Summarize] ", err);
+                  complete(false);
+                },
+              })
+              .catch((err: unknown) => {
+                console.error("[Summarize] ", err);
+                complete(false);
+              });
+          } catch (err) {
+            console.error("[Summarize] ", err);
+            complete(false);
+          }
+        } else {
+          onComplete?.(false);
         }
       },
 

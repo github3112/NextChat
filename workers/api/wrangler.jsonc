@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pyjri-cloud-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "APP_ORIGIN": "https://www.pyjri.com",
+    "AUTH_BASE_URL": "https://api.pyjri.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "pyjri-auth",
+      "database_id": "REPLACE_WITH_AUTH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

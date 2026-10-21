@@ -9,6 +9,8 @@ declare global {
 
       OPENAI_API_KEY?: string;
       CODE?: string;
+      CLOUDFLARE_ACCOUNT_ID?: string;
+      CLOUDFLARE_API_TOKEN?: string;
 
       BASE_URL?: string;
       OPENAI_ORG_ID?: string; // openai only
@@ -120,9 +122,7 @@ function getApiKey(keys?: string) {
   const apiKey = apiKeys[randomIndex];
   if (apiKey) {
     console.log(
-      `[Server Config] using ${randomIndex + 1} of ${
-        apiKeys.length
-      } api key - ${apiKey}`,
+      `[Server Config] using ${randomIndex + 1} of ${apiKeys.length} api key`,
     );
   }
 
@@ -140,6 +140,30 @@ export const getServerSideConfig = () => {
   let customModels = process.env.CUSTOM_MODELS ?? "";
   let defaultModel = process.env.DEFAULT_MODEL ?? "";
   let visionModels = process.env.VISION_MODELS ?? "";
+  const cloudflareModel = "@cf/zai-org/glm-4.7-flash";
+  const isCloudflare =
+    !!process.env.CLOUDFLARE_ACCOUNT_ID &&
+    !!process.env.CLOUDFLARE_API_TOKEN;
+
+  if (isCloudflare) {
+    const configuredModels = customModels
+      .split(",")
+      .map((model) => model.trim());
+    if (
+      !configuredModels.some(
+        (model) =>
+          model.replace(/^[+-]/, "").split("=")[0] ===
+          `${cloudflareModel}@Cloudflare`,
+      )
+    ) {
+      customModels = [customModels, `+${cloudflareModel}@Cloudflare`]
+        .filter(Boolean)
+        .join(",");
+    }
+    if (!defaultModel) {
+      defaultModel = `${cloudflareModel}@Cloudflare`;
+    }
+  }
 
   if (disableGPT4) {
     if (customModels) customModels += ",";
@@ -243,6 +267,8 @@ export const getServerSideConfig = () => {
     chatglmApiKey: getApiKey(process.env.CHATGLM_API_KEY),
 
     cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
+    isCloudflare,
     cloudflareKVNamespaceId: process.env.CLOUDFLARE_KV_NAMESPACE_ID,
     cloudflareKVApiKey: getApiKey(process.env.CLOUDFLARE_KV_API_KEY),
     cloudflareKVTTL: process.env.CLOUDFLARE_KV_TTL,

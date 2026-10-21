@@ -59,6 +59,7 @@ export function collectModelTable(
       name: string;
       displayName: string;
       sorted: number;
+      contextWindow?: number;
       provider?: LLMModel["provider"]; // Marked as optional
       isDefault?: boolean;
     }

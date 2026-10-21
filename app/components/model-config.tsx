@@ -32,9 +32,15 @@ export function ModelConfigList(props: {
             const [model, providerName] = getModelProvider(
               e.currentTarget.value,
             );
+            const modelInfo = allModels.find(
+              (item) =>
+                item.name === model &&
+                item.provider?.providerName === providerName,
+            );
             props.updateConfig((config) => {
               config.model = ModalConfigValidator.model(model);
               config.providerName = providerName as ServiceProvider;
+              config.contextWindow = modelInfo?.contextWindow ?? 0;
             });
           }}
         >
@@ -103,6 +109,34 @@ export function ModelConfigList(props: {
             props.updateConfig(
               (config) =>
                 (config.max_tokens = ModalConfigValidator.max_tokens(
+                  e.currentTarget.valueAsNumber,
+                )),
+            )
+          }
+        ></input>
+      </ListItem>
+      <ListItem
+        title={Locale.Settings.ContextWindow.Title}
+        subTitle={Locale.Settings.ContextWindow.SubTitle}
+      >
+        <input
+          aria-label={Locale.Settings.ContextWindow.Title}
+          type="number"
+          min={0}
+          max={1000000}
+          value={
+            props.modelConfig.contextWindow ||
+            allModels.find(
+              (model) =>
+                model.name === props.modelConfig.model &&
+                model.provider?.providerName === props.modelConfig.providerName,
+            )?.contextWindow ||
+            0
+          }
+          onChange={(e) =>
+            props.updateConfig(
+              (config) =>
+                (config.contextWindow = ModalConfigValidator.contextWindow(
                   e.currentTarget.valueAsNumber,
                 )),
             )

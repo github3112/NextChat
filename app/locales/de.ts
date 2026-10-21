@@ -28,7 +28,7 @@ const de: PartialLocaleType = {
     SaasTips:
       "Die Konfiguration ist zu kompliziert, ich möchte es sofort nutzen",
     TopTips:
-      "🥳 NextChat AI Einführungsangebot, schalte jetzt die neuesten großen Modelle frei",
+      "🥳 Pyjri AI Einführungsangebot, schalte jetzt die neuesten großen Modelle frei",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} Gespräche`,
@@ -303,10 +303,10 @@ const de: PartialLocaleType = {
 
     Access: {
       SaasStart: {
-        Title: "NextChat AI verwenden",
+        Title: "Pyjri AI verwenden",
         Label: "(Die kosteneffektivste Lösung)",
         SubTitle:
-          "Offiziell von NextChat verwaltet, sofort einsatzbereit ohne Konfiguration, unterstützt die neuesten großen Modelle",
+          "Offiziell von Pyjri verwaltet, sofort einsatzbereit ohne Konfiguration, unterstützt die neuesten großen Modelle",
         ChatNow: "Jetzt chatten",
       },
 

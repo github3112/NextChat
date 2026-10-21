@@ -5,13 +5,13 @@ require("../polyfill");
 import { useEffect, useState } from "react";
 import styles from "./home.module.scss";
 
-import BotIcon from "../icons/nextchat-bot.svg";
 import LoadingIcon from "../icons/three-dots.svg";
+import { BrandIcon } from "./brand-icon";
 
 import { getCSSVar, useMobileScreen } from "../utils";
 
 import dynamic from "next/dynamic";
-import { Path, SlotID } from "../constant";
+import { Path, ServiceProvider, SlotID } from "../constant";
 import { ErrorBoundary } from "./error";
 
 import { getISOLang, getLang } from "../locales";
@@ -26,15 +26,18 @@ import { SideBar } from "./sidebar";
 import { useAppConfig } from "../store/config";
 import { AuthPage } from "./auth";
 import { getClientConfig } from "../config/client";
-import { type ClientApi, getClientApi } from "../client/api";
+import { getClientApi } from "../client/api";
 import { useAccessStore } from "../store";
 import clsx from "clsx";
 import { initializeMcpSystem, isMcpEnabled } from "../mcp/actions";
+import { getModelProvider } from "../utils/model";
+import { showToast } from "./ui-lib";
+import { CloudSyncBootstrap } from "./cloud-sync-bootstrap";
 
 export function Loading(props: { noLogo?: boolean }) {
   return (
     <div className={clsx("no-dark", styles["loading-content"])}>
-      {!props.noLogo && <BotIcon />}
+      {!props.noLogo && <BrandIcon />}
       <LoadingIcon />
     </div>
   );
@@ -103,8 +106,8 @@ export function useSwitchTheme() {
     );
 
     if (config.theme === "auto") {
-      metaDescriptionDark?.setAttribute("content", "#151515");
-      metaDescriptionLight?.setAttribute("content", "#fafafa");
+      metaDescriptionDark?.setAttribute("content", "#273033");
+      metaDescriptionLight?.setAttribute("content", "#f7f9f9");
     } else {
       const themeColor = getCSSVar("--theme-color");
       metaDescriptionDark?.setAttribute("content", themeColor);
@@ -221,16 +224,91 @@ function Screen() {
 }
 
 export function useLoadData() {
-  const config = useAppConfig();
-
-  const api: ClientApi = getClientApi(config.modelConfig.providerName);
-
   useEffect(() => {
-    (async () => {
-      const models = await api.llm.models();
+    let cancelled = false;
+
+    const loadModels = async () => {
+      const accessStore = useAccessStore.getState();
+      await accessStore.fetch();
+
+      const providers = [
+        ServiceProvider.OpenAI,
+        ...(useAccessStore.getState().isCloudflare
+          ? [ServiceProvider.Cloudflare]
+          : []),
+      ];
+      const results = await Promise.all(
+        providers.map(async (provider) => {
+          try {
+            return {
+              models: await getClientApi(provider).llm.models(),
+              error: undefined,
+              provider,
+            };
+          } catch (error) {
+            return { models: [], error, provider };
+          }
+        }),
+      );
+      if (cancelled) return;
+
+      const models = results.flatMap((result) => result.models);
+      const config = useAppConfig.getState();
       config.mergeModels(models);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+      results.forEach(({ error, provider }) => {
+        if (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          console.error(`[Models] failed to load ${provider} models`, error);
+          showToast(`Failed to load ${provider} models: ${message}`);
+        }
+      });
+
+      if (models.length === 0) {
+        if (results.every((result) => !result.error)) {
+          showToast("No models were returned by the configured providers.");
+        }
+        return;
+      }
+
+      const [defaultModel, defaultProvider] = getModelProvider(
+        useAccessStore.getState().defaultModel,
+      );
+      const preferredModel =
+        models.find(
+          (model) =>
+            model.name === defaultModel &&
+            (!defaultProvider ||
+              model.provider.providerName === defaultProvider),
+        ) ?? models[0];
+      const currentModelIsAvailable = models.some(
+        (model) =>
+          model.name === config.modelConfig.model &&
+          model.provider.providerName === config.modelConfig.providerName,
+      );
+
+      if (!currentModelIsAvailable) {
+        config.update((appConfig) => {
+          appConfig.modelConfig.model = preferredModel.name;
+          appConfig.modelConfig.providerName =
+            preferredModel.provider.providerName as ServiceProvider;
+        });
+      }
+    };
+
+    loadModels().catch((error: Error) => {
+      if (cancelled) return;
+      console.error("[Models] failed to load from configured endpoint", error);
+      useAppConfig.getState().mergeModels([]);
+      showToast(
+        `Failed to load models from the configured OpenAI-compatible endpoint: ${error.message}`,
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 }
 
@@ -263,10 +341,13 @@ export function Home() {
   }
 
   return (
-    <ErrorBoundary>
-      <Router>
-        <Screen />
-      </Router>
-    </ErrorBoundary>
+    <>
+      <CloudSyncBootstrap />
+      <ErrorBoundary>
+        <Router>
+          <Screen />
+        </Router>
+      </ErrorBoundary>
+    </>
   );
 }

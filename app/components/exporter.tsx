@@ -21,15 +21,14 @@ import {
 
 import CopyIcon from "../icons/copy.svg";
 import LoadingIcon from "../icons/three-dots.svg";
-import NextChatIcon from "../icons/nextchat-bot.png";
 import ShareIcon from "../icons/share.svg";
+import { BrandIcon } from "./brand-icon";
 
 import DownloadIcon from "../icons/download.svg";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSelector, useMessageSelector } from "./message-selector";
 import { Avatar } from "./emoji";
 import dynamic from "next/dynamic";
-import NextImage from "next/image";
 
 import { toBlob, toPng } from "html-to-image";
 
@@ -515,18 +514,13 @@ export function ImagePreviewer(props: {
       >
         <div className={styles["chat-info"]}>
           <div className={clsx(styles["logo"], "no-dark")}>
-            <NextImage
-              src={NextChatIcon.src}
-              alt="logo"
-              width={50}
-              height={50}
-            />
+            <BrandIcon size={50} />
           </div>
 
           <div>
-            <div className={styles["main-title"]}>NextChat</div>
+            <div className={styles["main-title"]}>Pyjri</div>
             <div className={styles["sub-title"]}>
-              github.com/ChatGPTNextWeb/NextChat
+              www.pyjri.com
             </div>
             <div className={styles["icons"]}>
               <MaskAvatar avatar={config.avatar} />

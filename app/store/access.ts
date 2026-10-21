@@ -27,6 +27,7 @@ import { DEFAULT_CONFIG } from "./config";
 import { getModelProvider } from "../utils/model";
 
 let fetchState = 0; // 0 not fetch, 1 fetching, 2 done
+let fetchPromise: Promise<void> | undefined;
 
 const isApp = getClientConfig()?.buildMode === "export";
 
@@ -148,6 +149,7 @@ const DEFAULT_ACCESS_STATE = {
   customModels: "",
   defaultModel: "",
   visionModels: "",
+  isCloudflare: false,
 
   // tts config
   edgeTTSVoiceName: "zh-CN-YunxiNeural",
@@ -250,9 +252,14 @@ export const useAccessStore = createPersistStore(
       );
     },
     fetch() {
-      if (fetchState > 0 || getClientConfig()?.buildMode === "export") return;
+      if (fetchState === 2 || getClientConfig()?.buildMode === "export") {
+        return Promise.resolve();
+      }
+      if (fetchState === 1) return fetchPromise ?? Promise.resolve();
+      if (fetchPromise) return fetchPromise;
+
       fetchState = 1;
-      fetch("/api/config", {
+      fetchPromise = fetch("/api/config", {
         method: "post",
         body: null,
         headers: {
@@ -280,6 +287,7 @@ export const useAccessStore = createPersistStore(
         .finally(() => {
           fetchState = 2;
         });
+      return fetchPromise;
     },
   }),
   {

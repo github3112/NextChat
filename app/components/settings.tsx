@@ -49,8 +49,12 @@ import Locale, {
   changeLang,
   getLang,
 } from "../locales";
-import { copyToClipboard, clientUpdate, semverCompare } from "../utils";
-import Link from "next/link";
+import {
+  copyToClipboard,
+  clientUpdate,
+  safeLocalStorage,
+  semverCompare,
+} from "../utils";
 import {
   Anthropic,
   Azure,
@@ -64,11 +68,9 @@ import {
   GoogleSafetySettingsThreshold,
   OPENAI_BASE_URL,
   Path,
-  RELEASE_URL,
   STORAGE_KEY,
   ServiceProvider,
   SlotID,
-  UPDATE_URL,
   Stability,
   Iflytek,
   SAAS_CHAT_URL,
@@ -89,6 +91,19 @@ import { useMaskStore } from "../store/mask";
 import { ProviderType } from "../utils/cloud";
 import { TTSConfigList } from "./tts-config";
 import { RealtimeConfigList } from "./realtime-chat/realtime-config";
+import {
+  connectUserD1,
+  deletePyjriCloudAccount,
+  disconnectUserD1,
+  getPyjriCloudUser,
+  getUserD1Connection,
+  isPyjriCloudConfigured,
+  PyjriCloudError,
+  PyjriCloudUser,
+  signInWithGoogle,
+  signOutOfPyjriCloud,
+  UserD1Connection,
+} from "../utils/pyjri-cloud";
 
 function EditPromptModal(props: { id: string; onClose: () => void }) {
   const promptStore = usePromptStore();
@@ -511,6 +526,7 @@ function SyncItems() {
 
   return (
     <>
+      <PyjriCloudAccount />
       <List>
         <ListItem
           title={Locale.Settings.Sync.CloudState}
@@ -581,6 +597,264 @@ function SyncItems() {
   );
 }
 
+function PyjriCloudAccount() {
+  const [user, setUser] = useState<PyjriCloudUser | null>(null);
+  const [connection, setConnection] = useState<UserD1Connection>({
+    connected: false,
+    accountId: null,
+    databaseId: null,
+  });
+  const [accountId, setAccountId] = useState("");
+  const [databaseId, setDatabaseId] = useState("");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const configured = isPyjriCloudConfigured();
+
+  useEffect(() => {
+    if (!configured) return;
+
+    let cancelled = false;
+    getPyjriCloudUser()
+      .then(async (nextUser) => {
+        if (cancelled) return;
+        setUser(nextUser);
+        if (nextUser) {
+          const nextConnection = await getUserD1Connection();
+          if (!cancelled) setConnection(nextConnection);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("[Pyjri Cloud] failed to load account", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [configured]);
+
+  async function connectDatabase() {
+    setBusy(true);
+    try {
+      const result = await connectUserD1({ accountId, databaseId, token });
+      setConnection(result);
+      setToken("");
+      showToast("Cloudflare D1 connected.");
+      window.location.reload();
+    } catch (error) {
+      console.error("[Pyjri Cloud] failed to connect D1", error);
+      showToast(
+        error instanceof Error ? error.message : "Could not connect Cloudflare D1.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnectDatabase() {
+    setBusy(true);
+    try {
+      await disconnectUserD1();
+      setConnection({
+        connected: false,
+        accountId: null,
+        databaseId: null,
+      });
+      showToast("Cloudflare D1 disconnected. Remote chats remain in your database.");
+      window.location.reload();
+    } catch (error) {
+      console.error("[Pyjri Cloud] failed to disconnect D1", error);
+      showToast("Could not disconnect Cloudflare D1.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signOut() {
+    setBusy(true);
+    try {
+      await signOutOfPyjriCloud();
+      setUser(null);
+      setConnection({
+        connected: false,
+        accountId: null,
+        databaseId: null,
+      });
+      showToast("Signed out of Pyjri Cloud.");
+      window.location.reload();
+    } catch (error) {
+      console.error("[Pyjri Cloud] sign-out failed", error);
+      showToast("Could not sign out of Pyjri Cloud.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (
+      !(await showConfirm(
+        "Delete your Pyjri account and its encrypted credentials? This also deletes Pyjri chat records from your connected D1 database.",
+      ))
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let result: { deleted: boolean; remoteChatsDeleted: boolean };
+      try {
+        result = await deletePyjriCloudAccount(false);
+      } catch (error) {
+        if (!(error instanceof PyjriCloudError) || error.status !== 422) {
+          throw error;
+        }
+        if (
+          !(await showConfirm(
+            "Pyjri could not reach your D1 database. Delete your Pyjri account anyway and leave its chat records in that database?",
+          ))
+        ) {
+          return;
+        }
+        result = await deletePyjriCloudAccount(true);
+      }
+
+      showToast(
+        result.remoteChatsDeleted
+          ? "Pyjri account deleted."
+          : "Pyjri account deleted. Chat records remain in your D1 database.",
+      );
+      safeLocalStorage().removeItem("pyjri-cloud-chat-tombstones");
+      window.location.reload();
+    } catch (error) {
+      console.error("[Pyjri Cloud] account deletion failed", error);
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Could not delete your Pyjri account.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!configured) {
+    return (
+      <List>
+        <ListItem
+          title="Pyjri Cloud"
+          subTitle="Set NEXT_PUBLIC_PYJRI_API_URL to enable account sign-in and cross-device sync."
+        />
+      </List>
+    );
+  }
+
+  return (
+    <List>
+      <ListItem
+        title="Pyjri Cloud account"
+        subTitle={
+          user
+            ? `Signed in as ${user.email}`
+            : "Sign in to sync chats across your devices."
+        }
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          {user ? (
+            <IconButton
+              text="Sign out"
+              onClick={signOut}
+              disabled={busy}
+            />
+          ) : (
+            <IconButton
+              text="Sign in with Google"
+              type="primary"
+              onClick={async () => {
+                try {
+                  await signInWithGoogle();
+                } catch (error) {
+                  console.error("[Pyjri Cloud] sign-in failed", error);
+                  showToast(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not start Google sign-in.",
+                  );
+                }
+              }}
+              disabled={busy}
+            />
+          )}
+        </div>
+      </ListItem>
+
+      {user && (
+        <ListItem
+          title="Your Cloudflare D1"
+          subTitle={
+            connection.connected
+              ? `Connected: ${connection.databaseId}`
+              : "Create a D1 database and a token with D1 read/write access."
+          }
+        >
+          {connection.connected ? (
+            <IconButton
+              text="Disconnect D1"
+              onClick={disconnectDatabase}
+              disabled={busy}
+            />
+          ) : (
+            <div style={{ display: "grid", gap: "8px" }}>
+              <input
+                aria-label="Cloudflare account ID"
+                autoComplete="off"
+                placeholder="Cloudflare Account ID"
+                value={accountId}
+                onChange={(event) => setAccountId(event.target.value)}
+              />
+              <input
+                aria-label="D1 database ID"
+                autoComplete="off"
+                placeholder="D1 Database ID"
+                value={databaseId}
+                onChange={(event) => setDatabaseId(event.target.value)}
+              />
+              <PasswordInput
+                aria-label="Cloudflare API token"
+                autoComplete="new-password"
+                placeholder="Scoped Cloudflare API token"
+                value={token}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setToken(event.target.value)
+                }
+              />
+              <IconButton
+                text={busy ? "Connecting..." : "Connect D1"}
+                type="primary"
+                onClick={connectDatabase}
+                disabled={busy || !accountId || !databaseId || !token}
+              />
+            </div>
+          )}
+        </ListItem>
+      )}
+
+      {user && (
+        <ListItem
+          title="Delete Pyjri account"
+          subTitle="Deletes your account and encrypted credentials. Local chats stay on this device."
+        >
+          <IconButton
+            text="Delete account"
+            onClick={deleteAccount}
+            disabled={busy}
+          />
+        </ListItem>
+      )}
+    </List>
+  );
+}
+
 export function Settings() {
   const navigate = useNavigate();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -592,7 +866,6 @@ export function Settings() {
   const currentVersion = updateStore.formatVersion(updateStore.version);
   const remoteId = updateStore.formatVersion(updateStore.remoteVersion);
   const hasNewVersion = semverCompare(currentVersion, remoteId) === -1;
-  const updateUrl = getClientConfig()?.isApp ? RELEASE_URL : UPDATE_URL;
 
   function checkUpdate(force = false) {
     setCheckingUpdate(true);
@@ -1570,11 +1843,7 @@ export function Settings() {
                   text={Locale.Settings.Update.GoToUpdate}
                   onClick={() => clientUpdate()}
                 />
-              ) : (
-                <Link href={updateUrl} target="_blank" className="link">
-                  {Locale.Settings.Update.GoToUpdate}
-                </Link>
-              )
+              ) : undefined
             ) : (
               <IconButton
                 icon={<ResetIcon></ResetIcon>}

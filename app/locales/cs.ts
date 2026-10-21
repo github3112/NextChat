@@ -27,7 +27,7 @@ const cs: PartialLocaleType = {
     Return: "Návrat",
     SaasTips: "Konfigurace je příliš složitá, chci okamžitě začít používat",
     TopTips:
-      "🥳 Uvítací nabídka NextChat AI, okamžitě odemkněte nejnovější velké modely",
+      "🥳 Uvítací nabídka Pyjri AI, okamžitě odemkněte nejnovější velké modely",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} konverzací`,
@@ -295,10 +295,10 @@ const cs: PartialLocaleType = {
 
     Access: {
       SaasStart: {
-        Title: "Použití NextChat AI",
+        Title: "Použití Pyjri AI",
         Label: "(Nejlepší nákladově efektivní řešení)",
         SubTitle:
-          "Oficiálně udržováno NextChat, připraveno k použití bez konfigurace, podporuje nejnovější velké modely",
+          "Oficiálně udržováno Pyjri, připraveno k použití bez konfigurace, podporuje nejnovější velké modely",
         ChatNow: "Začněte chatovat nyní",
       },
 

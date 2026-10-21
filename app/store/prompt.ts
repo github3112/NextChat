@@ -1,7 +1,6 @@
 import Fuse from "fuse.js";
 import { nanoid } from "nanoid";
 import { StoreKey } from "../constant";
-import { getLang } from "../locales";
 import { createPersistStore } from "../utils/store";
 
 export interface Prompt {
@@ -159,29 +158,22 @@ export const usePromptStore = createPersistStore(
       fetch(PROMPT_URL)
         .then((res) => res.json())
         .then((res) => {
-          let fetchPrompts = [res.en, res.tw, res.cn];
-          if (getLang() === "cn") {
-            fetchPrompts = fetchPrompts.reverse();
-          }
-          const builtinPrompts = fetchPrompts.map((promptList: PromptList) => {
-            return promptList.map(
-              ([title, content]) =>
-                ({
-                  id: nanoid(),
-                  title,
-                  content,
-                  createdAt: Date.now(),
-                }) as Prompt,
-            );
-          });
+          const builtinPrompts = (res.en as PromptList).map(
+            ([title, content]) =>
+              ({
+                id: nanoid(),
+                title,
+                content,
+                createdAt: Date.now(),
+              }) as Prompt,
+          );
 
           const userPrompts = usePromptStore.getState().getUserPrompts() ?? [];
 
-          const allPromptsForSearch = builtinPrompts
-            .reduce((pre, cur) => pre.concat(cur), [])
-            .filter((v) => !!v.title && !!v.content);
-          SearchService.count.builtin =
-            res.en.length + res.cn.length + res.tw.length;
+          const allPromptsForSearch = builtinPrompts.filter(
+            (prompt) => !!prompt.title && !!prompt.content,
+          );
+          SearchService.count.builtin = allPromptsForSearch.length;
           SearchService.init(allPromptsForSearch, userPrompts);
         });
     },

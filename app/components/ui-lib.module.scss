@@ -24,6 +24,7 @@
     width: auto;
   }
 }
+
 .popover-mask {
   position: fixed;
   top: 0;
@@ -223,7 +224,7 @@
 
     .toast-action {
       padding-left: 20px;
-      color: var(--primary);
+      color: var(--primary-text);
       opacity: 0.8;
       border: 0;
       background: none;
@@ -336,4 +337,3 @@
     }
   }
 }
-

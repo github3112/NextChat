@@ -74,6 +74,7 @@ export enum ApiPath {
   ChatGLM = "/api/chatglm",
   DeepSeek = "/api/deepseek",
   SiliconFlow = "/api/siliconflow",
+  Cloudflare = "/api/cloudflare",
   "302.AI" = "/api/302ai",
 }
 
@@ -133,6 +134,7 @@ export enum ServiceProvider {
   ChatGLM = "ChatGLM",
   DeepSeek = "DeepSeek",
   SiliconFlow = "SiliconFlow",
+  Cloudflare = "Cloudflare",
   "302.AI" = "302.AI",
 }
 
@@ -160,6 +162,7 @@ export enum ModelProvider {
   ChatGLM = "ChatGLM",
   DeepSeek = "DeepSeek",
   SiliconFlow = "SiliconFlow",
+  Cloudflare = "Cloudflare",
   "302.AI" = "302.AI",
 }
 

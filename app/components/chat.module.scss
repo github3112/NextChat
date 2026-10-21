@@ -263,7 +263,7 @@
   }
 
   &-revert-btn {
-    color: var(--primary);
+    color: var(--primary-text);
     @include hide;
   }
 
@@ -304,6 +304,10 @@
   &:hover {
     text-decoration: underline;
   }
+}
+
+.context-usage {
+  opacity: 0.65;
 }
 
 @media only screen and (max-width: 600px) {
@@ -386,6 +390,12 @@
 .chat-message-avatar {
   position: relative;
 
+  .thinking-brand-icon {
+    display: inline-flex;
+    animation: thinking-logo-spin 2s linear infinite;
+    transform-origin: center;
+  }
+
   .chat-message-edit {
     position: absolute;
     height: 100%;
@@ -412,6 +422,18 @@
   }
 }
 
+@keyframes thinking-logo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-avatar .thinking-brand-icon {
+    animation: none;
+  }
+}
+
 .chat-message-status {
   font-size: 12px;
   color: #aaa;
@@ -431,6 +453,53 @@
       margin-left: 5px;
       margin-right: 5px;
     }
+  }
+}
+
+.thinking-disclosure {
+  margin-bottom: 8px;
+  color: var(--black);
+  font-size: 13px;
+
+  .thinking-disclosure-toggle {
+    display: flex;
+    width: fit-content;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    list-style: none;
+    color: var(--black);
+    opacity: 0.65;
+    transition: opacity 0.2s ease;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::before {
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid currentColor;
+      content: "";
+      transition: transform 0.2s ease;
+    }
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  &[open] > .thinking-disclosure-toggle::before {
+    transform: rotate(90deg);
+  }
+
+  .thinking-disclosure-content {
+    margin: 8px 0 0 2px;
+    padding-left: 12px;
+    border-left: var(--border-in-light);
+    opacity: 0.78;
   }
 }
 

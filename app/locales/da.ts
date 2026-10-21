@@ -666,7 +666,6 @@ const da: PartialLocaleType = {
       SubTitle: (count: number) => `${count} plugins`,
       Search: "Søg plugin",
       Create: "Opret nyt",
-      Find: "Du kan finde flere plugins på GitHub: ",
     },
     Item: {
       Info: (count: number) => `${count} metode`,

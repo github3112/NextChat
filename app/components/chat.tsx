@@ -85,6 +85,11 @@ import { ChatControllerPool } from "../client/controller";
 import { DalleQuality, DalleStyle, ModelSize } from "../typing";
 import { Prompt, usePromptStore } from "../store/prompt";
 import Locale from "../locales";
+import {
+  estimateMessageTokenLength,
+  estimateTokenLength,
+  resolveContextWindow,
+} from "../utils/token";
 
 import { IconButton } from "./button";
 import styles from "./chat.module.scss";
@@ -119,6 +124,7 @@ import { useAllModels } from "../utils/hooks";
 import { ClientApi, MultimodalContent } from "../client/api";
 import { createTTSPlayer } from "../utils/audio";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "../utils/ms_edge_tts";
+import { BrandIcon } from "./brand-icon";
 
 import { isEmpty } from "lodash-es";
 import { getModelProvider } from "../utils/model";
@@ -133,6 +139,31 @@ const ttsPlayer = createTTSPlayer();
 const Markdown = dynamic(async () => (await import("./markdown")).Markdown, {
   loading: () => <LoadingIcon />,
 });
+
+function splitThinkingContent(content: string) {
+  const paragraphs = content.split(/\n[ \t]*\n/);
+  const thinkingParagraphs: string[] = [];
+  let answerStart = 0;
+
+  while (answerStart < paragraphs.length && !paragraphs[answerStart].trim()) {
+    answerStart += 1;
+  }
+
+  while (
+    answerStart < paragraphs.length &&
+    paragraphs[answerStart].trimStart().startsWith(">")
+  ) {
+    thinkingParagraphs.push(
+      paragraphs[answerStart].replace(/^[ \t]*>[ \t]?/gm, ""),
+    );
+    answerStart += 1;
+  }
+
+  return {
+    thinking: thinkingParagraphs.join("\n\n").trim(),
+    answer: paragraphs.slice(answerStart).join("\n\n").trimStart(),
+  };
+}
 
 const MCPAction = () => {
   const navigate = useNavigate();
@@ -510,6 +541,7 @@ export function ChatActions(props: {
   const chatStore = useChatStore();
   const pluginStore = usePluginStore();
   const session = chatStore.currentSession();
+  const [compacting, setCompacting] = useState(false);
 
   // switch themes
   const theme = config.theme;
@@ -580,7 +612,11 @@ export function ChatActions(props: {
 
     // if current model is not available
     // switch to first available model
-    const isUnavailableModel = !models.some((m) => m.name === currentModel);
+    const isUnavailableModel = !models.some(
+      (model) =>
+        model.name === currentModel &&
+        model.provider?.providerName === currentProviderName,
+    );
     if (isUnavailableModel && models.length > 0) {
       // show next model to default model if exist
       let nextModel = models.find((model) => model.isDefault) || models[0];
@@ -595,7 +631,7 @@ export function ChatActions(props: {
           : nextModel.name,
       );
     }
-  }, [chatStore, currentModel, models, session]);
+  }, [chatStore, currentModel, currentProviderName, models, session]);
 
   return (
     <div className={styles["chat-input-actions"]}>
@@ -695,10 +731,17 @@ export function ChatActions(props: {
             onSelection={(s) => {
               if (s.length === 0) return;
               const [model, providerName] = getModelProvider(s[0]);
+              const selectedModel = models.find(
+                (item) =>
+                  item.name === model &&
+                  item.provider?.providerName === providerName,
+              );
               chatStore.updateTargetSession(session, (session) => {
                 session.mask.modelConfig.model = model as ModelType;
                 session.mask.modelConfig.providerName =
                   providerName as ServiceProvider;
+                session.mask.modelConfig.contextWindow =
+                  selectedModel?.contextWindow ?? 0;
                 session.mask.syncGlobalConfig = false;
               });
               if (providerName == "ByteDance") {
@@ -712,6 +755,56 @@ export function ChatActions(props: {
                 showToast(model);
               }
             }}
+          />
+        )}
+
+        {!isDalle3(currentModel) && (
+          <ChatAction
+            onClick={() => {
+              const modelConfig = session.mask.modelConfig;
+              if (compacting) return;
+              if (couldStop) {
+                showToast(Locale.Chat.Actions.WaitForResponseToFinish);
+                return;
+              }
+              if (!modelConfig.sendMemory) {
+                showToast(Locale.Chat.Actions.EnableMemoryBeforeCompacting);
+                return;
+              }
+              const summarizeIndex = Math.max(
+                session.lastSummarizeIndex,
+                session.clearContextIndex ?? 0,
+              );
+              const compactEndIndex = Math.max(
+                summarizeIndex,
+                session.messages.length -
+                  session.mask.modelConfig.historyMessageCount,
+              );
+              if (
+                summarizeIndex >= compactEndIndex ||
+                !session.messages
+                  .slice(summarizeIndex, compactEndIndex)
+                  .some((message) => !message.isError)
+              ) {
+                showToast(Locale.Chat.Actions.NoOlderHistoryToCompact);
+                return;
+              }
+              setCompacting(true);
+              chatStore.summarizeSession(false, session, true, (success) => {
+                setCompacting(false);
+                showToast(
+                  success
+                    ? Locale.Chat.Actions.ContextCompacted
+                    : Locale.Chat.Actions.ContextCompactionFailed,
+                );
+              });
+            }}
+            text={
+              compacting
+                ? Locale.Chat.Actions.CompactingContext
+                : Locale.Chat.Actions.CompactContext
+            }
+            icon={compacting ? <LoadingButtonIcon /> : <BrainIcon />}
           />
         )}
 
@@ -1334,6 +1427,43 @@ function _Chat() {
   const context: RenderMessage[] = useMemo(() => {
     return session.mask.hideContext ? [] : session.mask.context.slice();
   }, [session.mask.context, session.mask.hideContext]);
+  const contextModel = config.models.find(
+    (model) =>
+      model.name === session.mask.modelConfig.model &&
+      model.provider?.providerName === session.mask.modelConfig.providerName,
+  );
+  const contextWindow = resolveContextWindow(
+    session.mask.modelConfig.contextWindow,
+    contextModel?.contextWindow,
+  );
+  const contextClearIndex = session.clearContextIndex ?? 0;
+  const shortTermStartIndex = Math.max(
+    0,
+    session.messages.length - session.mask.modelConfig.historyMessageCount,
+  );
+  const hasMemoryInContext =
+    session.mask.modelConfig.sendMemory &&
+    session.memoryPrompt.length > 0 &&
+    session.lastSummarizeIndex > contextClearIndex;
+  const contextStartIndex = Math.max(
+    contextClearIndex,
+    hasMemoryInContext
+      ? Math.min(session.lastSummarizeIndex, shortTermStartIndex)
+      : shortTermStartIndex,
+  );
+  const estimatedContextTokens =
+    (hasMemoryInContext ? estimateTokenLength(session.memoryPrompt) : 0) +
+    session.mask.context.reduce(
+      (total, message) => total + estimateMessageTokenLength(message),
+      0,
+    ) +
+    session.messages
+      .slice(contextStartIndex)
+      .filter((message) => !message.isError)
+      .reduce(
+        (total, message) => total + estimateMessageTokenLength(message),
+        0,
+      );
 
   if (
     context.length === 0 &&
@@ -1711,6 +1841,16 @@ function _Chat() {
             </div>
             <div className="window-header-sub-title">
               {Locale.Chat.SubTitle(session.messages.length)}
+              <span
+                className={styles["context-usage"]}
+                title={Locale.Chat.ContextUsageTitle}
+              >
+                {" · "}
+                {Locale.Chat.ContextUsage(
+                  estimatedContextTokens,
+                  contextWindow,
+                )}
+              </span>
             </div>
           </div>
           <div className="window-actions">
@@ -1792,6 +1932,17 @@ function _Chat() {
                     !(message.preview || message.content.length === 0) &&
                     !isContext;
                   const showTyping = message.preview || message.streaming;
+                  const messageText = getMessageTextContent(message);
+                  const { thinking, answer } =
+                    splitThinkingContent(messageText);
+                  const lastMessageLine = messageText
+                    .trimEnd()
+                    .split("\n")
+                    .at(-1);
+                  const isThinking =
+                    !isUser &&
+                    message.streaming &&
+                    !!lastMessageLine?.startsWith(">");
 
                   const shouldShowClearContextDivider =
                     i === clearContextIndex - 1;
@@ -1849,7 +2000,15 @@ function _Chat() {
                                   }}
                                 ></IconButton>
                               </div>
-                              {isUser ? (
+                              {isThinking ? (
+                                <span
+                                  className={styles["thinking-brand-icon"]}
+                                  role="status"
+                                  aria-label="Thinking"
+                                >
+                                  <BrandIcon size={30} />
+                                </span>
+                              ) : isUser ? (
                                 <Avatar avatar={config.avatar} />
                               ) : (
                                 <>
@@ -1968,24 +2127,56 @@ function _Chat() {
                             </div>
                           )}
                           <div className={styles["chat-message-item"]}>
-                            <Markdown
-                              key={message.streaming ? "loading" : "done"}
-                              content={getMessageTextContent(message)}
-                              loading={
-                                (message.preview || message.streaming) &&
+                            {thinking && (
+                              <details
+                                className={styles["thinking-disclosure"]}
+                              >
+                                <summary
+                                  className={
+                                    styles["thinking-disclosure-toggle"]
+                                  }
+                                >
+                                  Thoughts
+                                </summary>
+                                <div
+                                  className={
+                                    styles["thinking-disclosure-content"]
+                                  }
+                                >
+                                  <Markdown
+                                    content={thinking}
+                                    fontSize={fontSize}
+                                    fontFamily={fontFamily}
+                                    parentRef={scrollRef}
+                                    defaultShow={i >= messages.length - 6}
+                                  />
+                                </div>
+                              </details>
+                            )}
+                            {(answer ||
+                              ((message.preview || message.streaming) &&
                                 message.content.length === 0 &&
-                                !isUser
-                              }
-                              //   onContextMenu={(e) => onRightClick(e, message)} // hard to use
-                              onDoubleClickCapture={() => {
-                                if (!isMobileScreen) return;
-                                setUserInput(getMessageTextContent(message));
-                              }}
-                              fontSize={fontSize}
-                              fontFamily={fontFamily}
-                              parentRef={scrollRef}
-                              defaultShow={i >= messages.length - 6}
-                            />
+                                !isUser &&
+                                !thinking)) && (
+                              <Markdown
+                                key={message.streaming ? "loading" : "done"}
+                                content={answer}
+                                loading={
+                                  (message.preview || message.streaming) &&
+                                  message.content.length === 0 &&
+                                  !isUser
+                                }
+                                //   onContextMenu={(e) => onRightClick(e, message)} // hard to use
+                                onDoubleClickCapture={() => {
+                                  if (!isMobileScreen) return;
+                                  setUserInput(messageText);
+                                }}
+                                fontSize={fontSize}
+                                fontFamily={fontFamily}
+                                parentRef={scrollRef}
+                                defaultShow={i >= messages.length - 6}
+                              />
+                            )}
                             {getMessageImages(message).length == 1 && (
                               <img
                                 className={styles["chat-message-item-image"]}

@@ -9,10 +9,10 @@ import { GoogleTagManager, GoogleAnalytics } from "@next/third-parties/google";
 import { getServerSideConfig } from "./config/server";
 
 export const metadata: Metadata = {
-  title: "NextChat",
-  description: "Your personal AI assistant.",
+  title: "Pyjri",
+  description: "Your personal AI assistant by Pyjri.",
   appleWebApp: {
-    title: "NextChat",
+    title: "Pyjri",
     statusBarStyle: "default",
   },
 };
@@ -22,8 +22,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
-    { media: "(prefers-color-scheme: dark)", color: "#151515" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f9f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#273033" },
   ],
 };
 

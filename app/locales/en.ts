@@ -28,13 +28,19 @@ const en: LocaleType = {
     Later: "Later",
     SaasTips: "Too Complex, Use Immediately Now",
     TopTips:
-      "🥳 NextChat AI launch promotion: Instantly unlock the latest models!",
+      "🥳 Pyjri AI launch promotion: Instantly unlock the latest models!",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count} messages`,
   },
   Chat: {
     SubTitle: (count: number) => `${count} messages`,
+    ContextUsageTitle:
+      "Approximate token estimate; actual usage varies by model and prompt overhead.",
+    ContextUsage: (used: number, limit?: number) =>
+      limit
+        ? `Context ~${used.toLocaleString()} / ${limit.toLocaleString()} tokens`
+        : `Context ~${used.toLocaleString()} tokens · model limit unknown`,
     EditMessage: {
       Title: "Edit All Messages",
       Topic: {
@@ -57,6 +63,16 @@ const en: LocaleType = {
       FullScreen: "FullScreen",
       RefreshTitle: "Refresh Title",
       RefreshToast: "Title refresh request sent",
+      CompactContext: "Compact context",
+      CompactingContext: "Compacting…",
+      WaitForResponseToFinish: "Wait for the current response to finish first.",
+      EnableMemoryBeforeCompacting:
+        "Enable memory in model settings before compacting context.",
+      NoOlderHistoryToCompact: "There is no older history to compact yet.",
+      ContextCompacted:
+        "Older context compacted. The full chat remains visible.",
+      ContextCompactionFailed:
+        "Context compaction failed; existing memory was preserved. Check the summary model and context limit.",
       Speech: "Play",
       StopSpeech: "Stop",
     },
@@ -298,6 +314,11 @@ const en: LocaleType = {
       Title: "Attached Messages Count",
       SubTitle: "Number of sent messages attached per request",
     },
+    ContextWindow: {
+      Title: "Context window",
+      SubTitle:
+        "Model input limit in tokens. Use 0 to use endpoint metadata, if available.",
+    },
     CompressThreshold: {
       Title: "History Compression Threshold",
       SubTitle:
@@ -315,10 +336,10 @@ const en: LocaleType = {
     },
     Access: {
       SaasStart: {
-        Title: "Use NextChat AI",
+        Title: "Use Pyjri AI",
         Label: " (Most Cost-Effective Option)",
         SubTitle:
-          "Maintained by NextChat, zero setup needed, unlock the latest models",
+          "Maintained by Pyjri, zero setup needed, unlock the latest models",
         ChatNow: "Start Now",
       },
       AccessCode: {
@@ -696,7 +717,6 @@ const en: LocaleType = {
       SubTitle: (count: number) => `${count} plugins`,
       Search: "Search Plugin",
       Create: "Create",
-      Find: "You can find awesome plugins on github: ",
     },
     Item: {
       Info: (count: number) => `${count} method`,

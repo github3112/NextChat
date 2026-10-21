@@ -32,6 +32,12 @@ const nextConfig = {
   },
   experimental: {
     forceSwcTransforms: true,
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3000",
+        "animated-telegram-4j9pjvjrqwgqhqgxx-3000.app.github.dev",
+      ],
+    },
   },
 };
 

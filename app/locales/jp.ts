@@ -26,7 +26,7 @@ const jp: PartialLocaleType = {
     Later: "後で",
     Return: "戻る",
     SaasTips: "設定が面倒すぎる、すぐに使いたい",
-    TopTips: "🥳 NextChat AIの発売特典で、最新の大規模モデルを今すぐアンロック",
+    TopTips: "🥳 Pyjri AIの発売特典で、最新の大規模モデルを今すぐアンロック",
   },
   ChatItem: {
     ChatItemCount: (count: number) => `${count}件の会話`,
@@ -292,10 +292,10 @@ const jp: PartialLocaleType = {
 
     Access: {
       SaasStart: {
-        Title: "NextChat AIを使用する",
+        Title: "Pyjri AIを使用する",
         Label: "(コストパフォーマンスの最も高いソリューション)",
         SubTitle:
-          "NextChatによって公式に管理されており、設定なしですぐに使用でき、最新の大規模モデルをサポートしています",
+          "Pyjriによって公式に管理されており、設定なしですぐに使用でき、最新の大規模モデルをサポートしています",
         ChatNow: "今すぐチャット",
       },
 

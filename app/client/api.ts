@@ -25,6 +25,7 @@ import { XAIApi } from "./platforms/xai";
 import { ChatGLMApi } from "./platforms/glm";
 import { SiliconflowApi } from "./platforms/siliconflow";
 import { Ai302Api } from "./platforms/ai302";
+import { CloudflareApi } from "./platforms/openai";
 
 export const ROLES = ["system", "user", "assistant"] as const;
 export type MessageRole = (typeof ROLES)[number];
@@ -94,6 +95,7 @@ export interface LLMModel {
   name: string;
   displayName?: string;
   available: boolean;
+  contextWindow?: number;
   provider: LLMModelProvider;
   sorted: number;
 }
@@ -177,6 +179,9 @@ export class ClientApi {
       case ModelProvider["302.AI"]:
         this.llm = new Ai302Api();
         break;
+      case ModelProvider.Cloudflare:
+        this.llm = new CloudflareApi();
+        break;
       default:
         this.llm = new ChatGPTApi();
     }
@@ -232,16 +237,26 @@ export function getBearerToken(
   apiKey: string,
   noBearer: boolean = false,
 ): string {
-  return validString(apiKey)
-    ? `${noBearer ? "" : "Bearer "}${apiKey.trim()}`
-    : "";
+  if (!validString(apiKey)) {
+    return "";
+  }
+
+  const key = apiKey.trim();
+  if (noBearer || /^Basic\s/i.test(key)) {
+    return key;
+  }
+
+  return `Bearer ${key}`;
 }
 
 export function validString(x: string): boolean {
   return x?.length > 0;
 }
 
-export function getHeaders(ignoreHeaders: boolean = false) {
+export function getHeaders(
+  ignoreHeaders: boolean = false,
+  providerOverride?: ServiceProvider,
+) {
   const accessStore = useAccessStore.getState();
   const chatStore = useChatStore.getState();
   let headers: Record<string, string> = {};
@@ -256,20 +271,22 @@ export function getHeaders(ignoreHeaders: boolean = false) {
 
   function getConfig() {
     const modelConfig = chatStore.currentSession().mask.modelConfig;
-    const isGoogle = modelConfig.providerName === ServiceProvider.Google;
-    const isAzure = modelConfig.providerName === ServiceProvider.Azure;
-    const isAnthropic = modelConfig.providerName === ServiceProvider.Anthropic;
-    const isBaidu = modelConfig.providerName == ServiceProvider.Baidu;
-    const isByteDance = modelConfig.providerName === ServiceProvider.ByteDance;
-    const isAlibaba = modelConfig.providerName === ServiceProvider.Alibaba;
-    const isMoonshot = modelConfig.providerName === ServiceProvider.Moonshot;
-    const isIflytek = modelConfig.providerName === ServiceProvider.Iflytek;
-    const isDeepSeek = modelConfig.providerName === ServiceProvider.DeepSeek;
-    const isXAI = modelConfig.providerName === ServiceProvider.XAI;
-    const isChatGLM = modelConfig.providerName === ServiceProvider.ChatGLM;
+    const providerName = providerOverride ?? modelConfig.providerName;
+    const isGoogle = providerName === ServiceProvider.Google;
+    const isAzure = providerName === ServiceProvider.Azure;
+    const isAnthropic = providerName === ServiceProvider.Anthropic;
+    const isBaidu = providerName == ServiceProvider.Baidu;
+    const isByteDance = providerName === ServiceProvider.ByteDance;
+    const isAlibaba = providerName === ServiceProvider.Alibaba;
+    const isMoonshot = providerName === ServiceProvider.Moonshot;
+    const isIflytek = providerName === ServiceProvider.Iflytek;
+    const isDeepSeek = providerName === ServiceProvider.DeepSeek;
+    const isXAI = providerName === ServiceProvider.XAI;
+    const isChatGLM = providerName === ServiceProvider.ChatGLM;
+    const isCloudflare = providerName === ServiceProvider.Cloudflare;
     const isSiliconFlow =
-      modelConfig.providerName === ServiceProvider.SiliconFlow;
-    const isAI302 = modelConfig.providerName === ServiceProvider["302.AI"];
+      providerName === ServiceProvider.SiliconFlow;
+    const isAI302 = providerName === ServiceProvider["302.AI"];
     const isEnabledAccessControl = accessStore.enabledAccessControl();
     const apiKey = isGoogle
       ? accessStore.googleApiKey
@@ -297,6 +314,8 @@ export function getHeaders(ignoreHeaders: boolean = false) {
         : ""
       : isAI302
       ? accessStore.ai302ApiKey
+      : isCloudflare
+      ? ""
       : accessStore.openaiApiKey;
     return {
       isGoogle,
@@ -393,6 +412,8 @@ export function getClientApi(provider: ServiceProvider): ClientApi {
       return new ClientApi(ModelProvider.SiliconFlow);
     case ServiceProvider["302.AI"]:
       return new ClientApi(ModelProvider["302.AI"]);
+    case ServiceProvider.Cloudflare:
+      return new ClientApi(ModelProvider.Cloudflare);
     default:
       return new ClientApi(ModelProvider.GPT);
   }

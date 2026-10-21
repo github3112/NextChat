@@ -5,8 +5,8 @@ import EmojiPicker, {
 } from "emoji-picker-react";
 
 import { ModelType } from "../store";
+import { BrandIcon } from "./brand-icon";
 
-import BotIconDefault from "../icons/nextchat-bot.svg";
 import BotIconGemini from "../icons/llm-icons/gemini.svg";
 import BotIconGemma from "../icons/llm-icons/gemma.svg";
 import BotIconClaude from "../icons/llm-icons/claude.svg";
@@ -45,7 +45,7 @@ export function AvatarPicker(props: {
 }
 
 export function Avatar(props: { model?: ModelType; avatar?: string }) {
-  let LlmIcon = BotIconDefault;
+  let LlmIcon: typeof BotIconGemini | null = null;
 
   if (props.model) {
     const modelName = props.model.toLowerCase();
@@ -87,7 +87,11 @@ export function Avatar(props: { model?: ModelType; avatar?: string }) {
 
     return (
       <div className="no-dark">
-        <LlmIcon className="user-avatar" width={30} height={30} />
+        {LlmIcon ? (
+          <LlmIcon className="user-avatar" width={30} height={30} />
+        ) : (
+          <BrandIcon size={30} className="user-avatar" />
+        )}
       </div>
     );
   }
